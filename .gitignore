@@ -1,0 +1,7 @@
+dub.selections.json
+*-test-*
+.dub
+*.exe
+*.lib
+*.a
+*.o

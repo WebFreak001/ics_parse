@@ -1,0 +1,4 @@
+name "ics_parse"
+description "RFC 5545 iCal / iCalendar event parser  (.ics files)"
+license "public domain"
+authors "Jan Jurzitza"
