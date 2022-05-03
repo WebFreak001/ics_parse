@@ -5,7 +5,8 @@ Parser for .ics files (ical format)
 Only supports parsing VEVENT right now.
 (no VTODO, VJOURNAL, VFREEBUSY, VTIMEZONE, iana components, custom X-components)
 
-Does not support non-UTC timezones. No support for date periods (recurrence days).
+- Does not support non-UTC timezones (timezones are not exposed, but could be and should be by implementing a custom SysTime timezone that's used)
+- Does not support VALARM parsing (should be easy to add)
 
 Standards: https://datatracker.ietf.org/doc/html/rfc5545
 
