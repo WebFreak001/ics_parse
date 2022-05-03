@@ -53,7 +53,7 @@ struct VCalendar
 	/// Contains the "METHOD" of the calendar metadata.
 	/// Standards: https://datatracker.ietf.org/doc/html/rfc5545#section-3.7.2
 	string method;
-	/// Contains any "X-" prefixed custom properties.
+	/// Contains any "X-" prefixed custom properties or unimplemented properties.
 	XProp[] xProps;
 
 	/// Contains all the supported `BEGIN:*`, `END:*` blocks.
@@ -173,7 +173,7 @@ struct VEvent
 	/// Contains the optional "RESOURCES" values
 	/// Standards: https://datatracker.ietf.org/doc/html/rfc5545#section-3.8.1.10
 	string[] resources;
-	/// Contains any "X-" prefixed custom properties.
+	/// Contains any "X-" prefixed custom properties or unimplemented properties.
 	XProp[] xProps;
 
 	/// Returns true if uid, dtStamp and dtStart are set.
@@ -236,14 +236,14 @@ struct RequestStatus
 	string exceptionData;
 }
 
-/// describes an "X-" prefixed custom property parameter (modifier)
+/// describes a custom property parameter
 struct XParam
 {
 	string name;
 	string[] values;
 }
 
-/// describes an "X-" prefixed custom property
+/// describes a custom property
 struct XProp
 {
 	string name;
@@ -469,7 +469,7 @@ private string earlyRejectWithXParamsAndCRLF(string property, string currentEntr
 		return `if (!tokens.matchTokens("` ~ property ~ `"))
 			return false;
 		while (tokens.matchTokens(";"))
-			skipParam(` ~ (currentEntry.length ? currentEntry ~ ", " : "")
+			parseXParam(` ~ (currentEntry.length ? currentEntry ~ ", " : "")
 				~ `"` ~ property ~ `");
 		` ~ colonValueBoilerplate(property, currentEntry);
 	}
@@ -978,7 +978,7 @@ struct ICalendarParser
 			}
 			else
 			{
-				skipParam(event, "ATTACH");
+				parseXParam(event, "ATTACH");
 			}
 		}
 		mixin(colonValueBoilerplate("ATTACH", "event"));
@@ -1002,7 +1002,7 @@ struct ICalendarParser
 		while (tokens.matchTokens(";"))
 		{
 			// TODO: cutypeparam, memberparam, roleparam, partstatparam, rsvpparam, deltoparam, delfromparam, sentbyparam, cnparam, dirparam, languageparam
-			skipParam(event, "ATTENDEE");
+			parseXParam(event, "ATTENDEE");
 		}
 		mixin(colonValueBoilerplate("ATTENDEE", "event"));
 		attendee.address = parseText(event, "ATTENDEE");
@@ -1099,10 +1099,14 @@ struct ICalendarParser
 
 	XProp parseXProp(T...)(auto ref T errorInfo)
 	{
-		if (!tokens.data.startsWith("X-"))
-			return XProp.init;
+		auto recover = tokens.data;
 		XProp ret;
 		ret.name = parseXName;
+		if (ret.name == "BEGIN" || ret.name == "END")
+		{
+			tokens.data = recover;
+			return XProp.init;
+		}
 		while (tokens.matchTokens(";"))
 		{
 			if (tokens.matchTokens("LANGUAGE", "="))
@@ -1113,10 +1117,7 @@ struct ICalendarParser
 			else
 			{
 				auto p = parseXParam(forward!errorInfo, ret.name);
-				if (p != XParam.init)
-					ret.params ~= p;
-				else
-					skipParam(forward!errorInfo, ret.name);
+				ret.params ~= p;
 			}
 		}
 
@@ -1133,8 +1134,6 @@ struct ICalendarParser
 
 	XParam parseXParam(T...)(auto ref T errorInfo)
 	{
-		if (!tokens.data.startsWith("X-"))
-			return XParam.init;
 		XParam ret;
 		ret.name = parseXName;
 		if (!tokens.matchTokens("="))
@@ -1145,30 +1144,8 @@ struct ICalendarParser
 		do
 		{
 			ret.values ~= parseParamValue(errorInfo);
-		}
-		while (tokens.matchTokens(","));
+		} while (tokens.matchTokens(","));
 		return ret;
-	}
-
-	void skipParam(T...)(auto ref T errorInfo)
-	{
-		if (tokens.data.startsWith("X-"))
-		{
-			cast(void)parseXParam(forward!errorInfo);
-		}
-		else
-		{
-			auto eq = tokens.data.countUntil('=');
-			if (eq == -1)
-			{
-				error(forward!errorInfo, "malformed parameter without equal sign");
-			}
-			else
-			{
-				tokens.data = tokens.data[eq + 1 .. $];
-				parseParamValue(forward!errorInfo);
-			}
-		}
 	}
 
 	string parseXName()
@@ -1332,7 +1309,7 @@ struct ICalendarParser
 				}
 				else
 				{
-					skipParam(e, prop);
+					parseXParam(e, prop);
 				}
 			}
 			if (!tokens.matchTokens(":"))
@@ -1688,7 +1665,7 @@ unittest
 	assert(event.status == EventStatus.confirmed);
 	assert(event.sequenceNumber == 0);
 	assert(event.location == "");
-	assert(event.xProps.length == 9);
+	assert(event.xProps.length == 10);
 	assert(event.xProps[0] == XProp("X-MICROSOFT-CDO-APPT-SEQUENCE", "0"));
 	assert(event.xProps[1] == XProp("X-MICROSOFT-CDO-OWNERAPPTID", "2120555927"));
 	assert(event.xProps[2] == XProp("X-MICROSOFT-CDO-BUSYSTATUS", "TENTATIVE"));
@@ -1698,6 +1675,7 @@ unittest
 	assert(event.xProps[6] == XProp("X-MICROSOFT-CDO-INSTTYPE", "0"));
 	assert(event.xProps[7] == XProp("X-MICROSOFT-DONOTFORWARDMEETING", "FALSE"));
 	assert(event.xProps[8] == XProp("X-MICROSOFT-DISALLOW-COUNTER", "FALSE"));
+	assert(event.xProps[9] == XProp("IANA-EXT", "TRUE"));
 }
 
 version(none) unittest
